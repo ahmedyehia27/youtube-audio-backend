@@ -28,7 +28,18 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
+
+@app.middleware("http")
+async def add_cors_headers_middleware(request, call_next):
+    response = await call_next(request)
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "*"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    response.headers["Access-Control-Expose-Headers"] = "*"
+    response.headers["Accept-Ranges"] = "bytes"
+    return response
 
 # Ensure public and temp directories exist
 PUBLIC_DIR = os.path.abspath("public")
@@ -1978,5 +1989,32 @@ async def convert_vertical_async(
     background_tasks.add_task(run_convert_vertical_background, task_id, video_path, youtubeUrl, task_dir)
 
     return {"status": "processing", "taskId": task_id}
+
+
+@app.get("/api/download-temp/{task_id}")
+@app.get("/api/download-temp/{task_id}/{filename}")
+async def download_temp_file(task_id: str, filename: str = "vertical_tiktok.mp4"):
+    task_dir = os.path.join(PUBLIC_DIR, f"temp_{task_id}")
+    file_path = os.path.join(task_dir, filename)
+    if not os.path.exists(file_path):
+        if os.path.exists(task_dir):
+            mp4s = [f for f in os.listdir(task_dir) if f.endswith(".mp4")]
+            if mp4s:
+                file_path = os.path.join(task_dir, mp4s[0])
+    if not os.path.exists(file_path):
+        file_path = os.path.join(TEMP_DIR, f"temp_{task_id}", filename)
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileResponse(
+        file_path,
+        media_type="video/mp4" if file_path.endswith(".mp4") else "application/octet-stream",
+        filename=os.path.basename(file_path),
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Expose-Headers": "*",
+            "Accept-Ranges": "bytes"
+        }
+    )
+
 
 
